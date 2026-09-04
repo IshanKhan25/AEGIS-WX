@@ -19,8 +19,8 @@ def test_every_demo_regime_and_variable(regime):
         assert np.allclose(output["weights"].sum(axis=1), 1.0, atol=1e-8)
         assert np.isfinite(output["final"]).all()
         assert np.isfinite(output["uncertainty"]).all()
-        assert len(benchmark(result, variable)) == 5
-        assert len(benchmark_by_lead(result, variable)) == len(scenario.leads) * 5
+        assert len(benchmark(result, variable)) == 6
+        assert len(benchmark_by_lead(result, variable)) == len(scenario.leads) * 6
 
 def test_real_request_is_honest_demo_fallback():
     scenario, label = load_scenario(load_config(), mode="REAL DATA", seed=1)

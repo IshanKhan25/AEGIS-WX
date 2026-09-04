@@ -4,6 +4,12 @@ from dataclasses import dataclass
 
 MODELS = ("GFS", "ECMWF", "NCUM")
 REGIMES = ("NORMAL", "MONSOON", "CYCLONE", "HEATWAVE", "WESTERN_DISTURBANCE")
+DEMO_SCENARIOS = ("NORMAL", "MONSOON", "HEAVY_RAIN", "CYCLONE", "HEATWAVE", "HIGH_WIND", "EXTREME_DISAGREEMENT", "MISSING_MODEL_INPUT")
+SCENARIO_REGIMES = {
+    "NORMAL": "NORMAL", "MONSOON": "MONSOON", "HEAVY_RAIN": "MONSOON",
+    "CYCLONE": "CYCLONE", "HEATWAVE": "HEATWAVE", "HIGH_WIND": "CYCLONE",
+    "EXTREME_DISAGREEMENT": "NORMAL", "MISSING_MODEL_INPUT": "NORMAL",
+}
 VARIABLES = ("precipitation", "temperature_2m", "wind_speed_10m", "wind_direction_10m", "pressure")
 
 @dataclass
@@ -15,6 +21,7 @@ class WeatherScenario:
     forecasts: dict[str, dict[str, np.ndarray]] # model -> variable -> (lead, lat, lon)
     regime: str
     seed: int
+    scenario: str = "NORMAL"
 
 def _smooth(x: np.ndarray, passes: int = 2) -> np.ndarray:
     for _ in range(passes):
@@ -24,14 +31,15 @@ def _smooth(x: np.ndarray, passes: int = 2) -> np.ndarray:
 class SyntheticNWPGenerator:
     """Produces correlated Indian-domain hindcasts with regime/source-dependent errors."""
     def __init__(self, config: dict): self.config = config
-    def generate(self, seed: int | None = None, regime: str | None = None) -> WeatherScenario:
+    def generate(self, seed: int | None = None, regime: str | None = None, scenario: str | None = None) -> WeatherScenario:
         d, g, f = self.config["domain"], self.config["grid"], self.config["forecast"]
         seed = self.config["demo"]["random_seed"] if seed is None else seed
         rng = np.random.default_rng(seed)
         lat = np.arange(d["min_lat"], d["max_lat"] + .01, g["resolution"])
         lon = np.arange(d["min_lon"], d["max_lon"] + .01, g["resolution"])
         yy, xx = np.meshgrid(lat, lon, indexing="ij"); leads = np.asarray(f["lead_times"], dtype=float)
-        regime = regime if regime in REGIMES else REGIMES[seed % len(REGIMES)]
+        scenario = (scenario or regime or REGIMES[seed % len(REGIMES)]).upper()
+        regime = SCENARIO_REGIMES.get(scenario, scenario if scenario in REGIMES else "NORMAL")
         fields = {v: [] for v in VARIABLES}
         # physically motivated land/monsoon/cyclonic patterns; values are synthetic hindcasts.
         coast = np.exp(-((xx-76)/5)**2) + .7*np.exp(-((xx-88)/6)**2)
@@ -73,4 +81,16 @@ class SyntheticNWPGenerator:
                 elif var == "wind_direction_10m": model[var] = (actual + 8*err) % 360
                 else: model[var] = actual + .25*factor*spatial_bias + .5*err
             forecasts[m] = model
-        return WeatherScenario(lat, lon, leads, truth, forecasts, regime, seed)
+        if scenario == "EXTREME_DISAGREEMENT":
+            # A deliberately stress-tested synthetic case: source-specific errors are
+            # increased while the synthetic truth remains unchanged.
+            offsets = {"GFS": 11.0, "ECMWF": -7.0, "NCUM": 5.0}
+            for model_name, offset in offsets.items():
+                forecasts[model_name]["precipitation"] = np.maximum(0, forecasts[model_name]["precipitation"] + offset)
+                forecasts[model_name]["temperature_2m"] += offset * .30
+                forecasts[model_name]["wind_speed_10m"] = np.maximum(0, forecasts[model_name]["wind_speed_10m"] + offset * .22)
+        elif scenario == "MISSING_MODEL_INPUT":
+            # Model availability is a genuine pipeline condition, not a cosmetic badge.
+            for variable in VARIABLES:
+                forecasts["NCUM"][variable] = np.full_like(forecasts["NCUM"][variable], np.nan)
+        return WeatherScenario(lat, lon, leads, truth, forecasts, regime, seed, scenario)

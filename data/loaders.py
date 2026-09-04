@@ -12,4 +12,4 @@ def load_scenario(config: dict, mode: str = "DEMO", **kwargs):
         except (OSError, RuntimeError, KeyError) as exc:
             return DemoAdapter(config).load_forecast(seed=kwargs.get("seed")), f"DEMO MODE — real input unavailable ({exc})"
     label = "DEMO MODE — real inputs not supplied; Synthetic Hindcast Data" if real_requested else "DEMO MODE — Synthetic Hindcast Data"
-    return DemoAdapter(config).load_forecast(seed=kwargs.get("seed"), regime=kwargs.get("regime")), label
+    return DemoAdapter(config).load_forecast(seed=kwargs.get("seed"), regime=kwargs.get("regime"), scenario=kwargs.get("scenario")), label

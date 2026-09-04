@@ -8,7 +8,7 @@ grid:
 forecast:
   lead_times: [0, 24, 48, 72]
 thresholds:
-  uncertainty: 0.62
+  uncertainty: 0.75  # per-cell safeguard threshold; normal demo remains adaptively blended
   heavy_rain: 20.0
   severe_wind: 17.0
   heatwave: 40.0

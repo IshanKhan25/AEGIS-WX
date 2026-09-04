@@ -17,7 +17,8 @@ def validate_scenario(s: WeatherScenario) -> list[str]:
             if v not in fields: errors.append(f"{source}: missing {v}"); continue
             a = fields[v]
             if a.shape != shape: errors.append(f"{source}/{v}: expected {shape}, got {a.shape}")
-            if not np.isfinite(a).all(): errors.append(f"{source}/{v}: NaN or infinity")
+            is_simulated_missing_source = s.scenario == "MISSING_MODEL_INPUT" and source == "NCUM" and np.isnan(a).all()
+            if not np.isfinite(a).all() and not is_simulated_missing_source: errors.append(f"{source}/{v}: NaN or infinity")
     if np.any(s.truth["precipitation"] < 0) or np.any(s.truth["wind_speed_10m"] < 0): errors.append("Negative physical value")
     return errors
 

@@ -1,11 +1,23 @@
 from __future__ import annotations
 import numpy as np
-def rmse(pred, truth): return float(np.sqrt(np.mean((np.asarray(pred)-np.asarray(truth))**2)))
-def mae(pred, truth): return float(np.mean(np.abs(np.asarray(pred)-np.asarray(truth))))
+def _valid(pred, truth):
+    p,t=np.asarray(pred),np.asarray(truth); mask=np.isfinite(p)&np.isfinite(t); return p[mask],t[mask]
+def rmse(pred, truth):
+    p,t=_valid(pred,truth); return float(np.sqrt(np.mean((p-t)**2))) if len(p) else float("nan")
+def mae(pred, truth):
+    p,t=_valid(pred,truth); return float(np.mean(np.abs(p-t))) if len(p) else float("nan")
+def bias(pred, truth):
+    p,t=_valid(pred,truth); return float(np.mean(p-t)) if len(p) else float("nan")
+def correlation(pred, truth):
+    p,t=_valid(pred,truth)
+    if len(p) < 2 or np.std(p) == 0 or np.std(t) == 0: return float("nan")
+    return float(np.corrcoef(p,t)[0,1])
 def csi(pred, truth, threshold: float):
-    p=np.asarray(pred)>=threshold; t=np.asarray(truth)>=threshold; hits=np.sum(p&t); denom=hits+np.sum(p&~t)+np.sum(~p&t); return float(hits/denom) if denom else 1.0
+    p,t=_valid(pred,truth)
+    if not len(p): return float("nan")
+    p=p>=threshold; t=t>=threshold; hits=np.sum(p&t); denom=hits+np.sum(p&~t)+np.sum(~p&t); return float(hits/denom) if denom else 1.0
 def roc_auc(pred, truth, threshold: float):
-    y=(np.asarray(truth).ravel()>=threshold).astype(int); scores=np.asarray(pred).ravel()
+    scores,actual=_valid(pred,truth); y=(actual>=threshold).astype(int)
     if len(np.unique(y))<2: return float("nan")
     try:
         from sklearn.metrics import roc_auc_score; return float(roc_auc_score(y,scores))

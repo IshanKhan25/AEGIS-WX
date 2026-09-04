@@ -5,10 +5,10 @@ from data.synthetic_generator import REGIMES
 class RuleBasedRegimeClassifier:
     """Transparent prototype classifier; probabilities derive from observed aggregate features."""
     def predict(self, forecasts: dict[str, dict[str, np.ndarray]]) -> tuple[str, dict[str, float], dict[str, float]]:
-        rain = np.mean([x["precipitation"] for x in forecasts.values()], axis=0)
-        temp = np.mean([x["temperature_2m"] for x in forecasts.values()], axis=0)
-        wind = np.mean([x["wind_speed_10m"] for x in forecasts.values()], axis=0)
-        p = np.mean([x["pressure"] for x in forecasts.values()], axis=0)
+        rain = np.nanmean([x["precipitation"] for x in forecasts.values()], axis=0)
+        temp = np.nanmean([x["temperature_2m"] for x in forecasts.values()], axis=0)
+        wind = np.nanmean([x["wind_speed_10m"] for x in forecasts.values()], axis=0)
+        p = np.nanmean([x["pressure"] for x in forecasts.values()], axis=0)
         # The demo domain runs south-to-north.  These are transparent spatial
         # signatures, rather than opaque labels tied to a scenario seed.
         central_rain = float(np.mean(rain[:, 10:24]))
