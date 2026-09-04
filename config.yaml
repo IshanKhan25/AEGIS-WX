@@ -1,0 +1,19 @@
+domain:
+  min_lat: 5.0
+  max_lat: 40.0
+  min_lon: 60.0
+  max_lon: 100.0
+grid:
+  resolution: 1.0  # reduced DEMO computational grid; use 0.25 operationally
+forecast:
+  lead_times: [0, 24, 48, 72]
+thresholds:
+  uncertainty: 0.62
+  heavy_rain: 20.0
+  severe_wind: 17.0
+  heatwave: 40.0
+demo:
+  random_seed: 26081
+runtime:
+  device: auto
+  batch_size: 2
