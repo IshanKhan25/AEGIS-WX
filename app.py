@@ -9,7 +9,7 @@ from core.config import load_config
 from data.synthetic_generator import DEMO_SCENARIOS, MODELS
 from inference.pipeline import AegisPipeline
 from ui.components import CSS, SCENARIO_LABELS, VARIABLE_META, chart, download_summary, fmt, pct, selected_cell_frame, status_badge
-from verification.benchmarks import benchmark, benchmark_by_lead
+from verification.benchmarks import METRIC_DIRECTIONS, benchmark, benchmark_by_lead, get_best_model_for_metric, sanitise_metric_table
 from visualization.charts import line_comparison
 from visualization.maps import heatmap
 
@@ -190,23 +190,43 @@ def render_explain(result: dict, variable: str, lead_index: int, lat_i: int, lon
 
 
 def render_verification(result: dict, variable: str, lat_i: int, lon_i: int) -> None:
-    s, output, table = result["scenario"], result["outputs"][variable], benchmark(result, variable)
+    s, output = result["scenario"], result["outputs"][variable]
+    table = sanitise_metric_table(benchmark(result, variable))
     st.header("Demo Validation Against Baselines")
     st.caption("DEMO MODE — Comparison using synthetic hindcast truth. Scores are recomputed for the generated case and are not operational performance claims.")
-    best = table.loc[table["RMSE"].idxmin()]
-    best_rmse = table.loc[table["RMSE"].idxmin(), "Model"]
-    best_mae = table.loc[table["MAE"].idxmin(), "Model"]
-    best_correlation = table.loc[table["Correlation"].idxmax(), "Model"]
-    comparison_metrics = ["RMSE", "MAE", "Correlation", "CSI", "ROC-AUC"]
-    aegis_wins = sum(
-        table.loc[table[metric].idxmin() if metric in {"RMSE", "MAE"} else table[metric].idxmax(), "Model"] == "AEGIS-WX"
-        for metric in comparison_metrics
-    )
-    metrics = [("Best RMSE", str(best_rmse), "Lower is better."), ("Best MAE", str(best_mae), "Lower is better."), ("Best correlation", str(best_correlation), "Closer to 1 is better."), ("AEGIS-WX wins", f"{aegis_wins} of {len(comparison_metrics)}", "Count across the displayed metrics.")]
+    best_models = {metric: get_best_model_for_metric(table, metric) for metric in METRIC_DIRECTIONS}
+    comparison_metrics = list(METRIC_DIRECTIONS)
+    rankable_metrics = [metric for metric, model in best_models.items() if model is not None]
+    aegis_wins = sum(best_models[metric] == "AEGIS-WX" for metric in rankable_metrics)
+    metrics = [
+        ("Best RMSE", best_models["RMSE"] or "N/A", "Lower is better."),
+        ("Best MAE", best_models["MAE"] or "N/A", "Lower is better."),
+        ("Best |Bias|", best_models["Bias"] or "N/A", "Bias closest to zero is better."),
+        ("Best correlation", best_models["Correlation"] or "N/A", "Higher finite correlation is better."),
+    ]
     for column, (label, value, help_text) in zip(st.columns(4), metrics):
         column.metric(label, value, help=help_text)
-    st.success(f"Best model for this generated case: {best['Model']} (lowest RMSE). Lower RMSE and MAE are better; correlation closer to 1 is better.")
-    st.dataframe(table.style.format({"RMSE": "{:.3f}", "MAE": "{:.3f}", "Bias": "{:+.3f}", "Correlation": "{:.3f}", "CSI": "{:.3f}", "ROC-AUC": "{:.3f}"}).highlight_min(subset=["RMSE", "MAE"], color="#164c41").highlight_max(subset=["Correlation", "CSI", "ROC-AUC"], color="#164c41"), hide_index=True, width="stretch")
+    if rankable_metrics:
+        st.caption(f"Best CSI: {best_models['CSI'] or 'N/A'} · Best ROC-AUC: {best_models['ROC-AUC'] or 'N/A'} · AEGIS-WX leads {aegis_wins} of {len(rankable_metrics)} defined metrics.")
+    undefined = [metric for metric, model in best_models.items() if model is None]
+    if undefined:
+        st.info("N/A — metric undefined for this demo case: " + ", ".join(undefined) + ". This can occur when a reference or forecast field has zero variance, or an event metric has no valid denominator.")
+    if best_models["RMSE"]:
+        st.success(f"Best model for this generated case: {best_models['RMSE']} (lowest RMSE). Lower RMSE and MAE are better; bias closest to zero and higher finite correlation/CSI are better.")
+    else:
+        st.info("Best model: N/A — RMSE is undefined for this demo case.")
+
+    display_table = table.copy()
+    formats = {"RMSE": "{:.3f}", "MAE": "{:.3f}", "Bias": "{:+.3f}", "Correlation": "{:.3f}", "CSI": "{:.3f}", "ROC-AUC": "{:.3f}"}
+    for metric, number_format in formats.items():
+        values = pd.to_numeric(table[metric], errors="coerce")
+        display_table[metric] = [number_format.format(value) if np.isfinite(value) else "N/A" for value in values]
+    highlights = pd.DataFrame("", index=display_table.index, columns=display_table.columns)
+    for metric, model in best_models.items():
+        if model is not None:
+            row = table.index[table["Model"] == model][0]
+            highlights.loc[row, metric] = "background-color: #164c41"
+    st.dataframe(display_table.style.apply(lambda _: highlights, axis=None), hide_index=True, width="stretch")
     chart(st, line_comparison(benchmark_by_lead(result, variable), title="Measured RMSE by forecast lead"))
     series = {model: s.forecasts[model][variable][:, lat_i, lon_i] for model in MODELS} | {"AEGIS-WX": output["final"][:, lat_i, lon_i], "Synthetic truth": s.truth[variable][:, lat_i, lon_i]}
     st.line_chart(pd.DataFrame(series, index=s.leads))
